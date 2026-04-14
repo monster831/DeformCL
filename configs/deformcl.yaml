@@ -7,8 +7,8 @@ MODEL:
   BACKBONE:
     NAME: "build_unetaf_backbone"
 DATASETS:
-  TRAIN: ("TotalSeg_Iliac_Train_L", "TotalSeg_Iliac_Train_R")
-  TEST: ("TotalSeg_Iliac_Train_L", "TotalSeg_Iliac_Train_R")
+  TRAIN: ("TotalSeg_Aorta_Train",)
+  TEST: ("TotalSeg_Aorta_Train",)
 DATALOADER:
   NUM_WORKERS: 7
 INPUT:

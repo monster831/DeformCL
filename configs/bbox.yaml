@@ -7,8 +7,8 @@ MODEL:
   BACKBONE:
     NAME: "build_light_net_backbone"
 DATASETS:
-  TRAIN: ("TotalSeg_Iliac_Train",)
-  TEST: ("TotalSeg_Iliac_Train",)
+  TRAIN: ("TotalSeg_Aorta_Train",)
+  TEST: ("TotalSeg_Aorta_Train",)
 DATALOADER:
   NUM_WORKERS: 7
 INPUT:

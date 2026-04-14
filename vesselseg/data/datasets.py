@@ -14,7 +14,7 @@ def load_npz_cta_dataset(data_dir, size=None, filter_str=None):
     # 1. 基础过滤：只保留 .npz
     files = [f for f in files if f.endswith(suffix)]
     
-    # 2. 【核心修复】进阶过滤：只保留包含特定字符的文件 (如 "_L_")
+    # 2. 进阶过滤：只保留包含特定字符的文件 (如 "_L_")
     if filter_str is not None:
         files = [f for f in files if filter_str in f]
         
@@ -37,7 +37,19 @@ def load_npz_cta_dataset(data_dir, size=None, filter_str=None):
 # 注册数据集
 # ========================================================
 
-# 1. 保留旧的 (Train)，但一般不建议用了
+# 🌟【新增】主动脉 (Aorta) 专属训练集
+DatasetCatalog.register(
+    'TotalSeg_Aorta_Train',
+    lambda data_dir='./datasets/TotalSeg_Aorta/train':
+    load_npz_cta_dataset(data_dir)
+)
+MetadataCatalog.get('TotalSeg_Aorta_Train').set(data_dir='./datasets/TotalSeg_Aorta/train')
+
+
+# ========================================================
+# 以下为您之前保留的髂动脉/股动脉注册信息，互不干扰
+# ========================================================
+
 DatasetCatalog.register(
     'TotalSeg_Iliac_Train',
     lambda data_dir='./datasets/TotalSeg_Iliac/train':
@@ -45,7 +57,6 @@ DatasetCatalog.register(
 )
 MetadataCatalog.get('TotalSeg_Iliac_Train').set(data_dir='./datasets/TotalSeg_Iliac/train')
 
-# 2. 【新增】左侧专用训练集 (只读 _L_ 文件)
 DatasetCatalog.register(
     'TotalSeg_Iliac_Train_L',
     lambda data_dir='./datasets/TotalSeg_Iliac/train':
@@ -53,7 +64,6 @@ DatasetCatalog.register(
 )
 MetadataCatalog.get('TotalSeg_Iliac_Train_L').set(data_dir='./datasets/TotalSeg_Iliac/train')
 
-# 3. 【新增】右侧专用训练集 (只读 _R_ 文件)
 DatasetCatalog.register(
     'TotalSeg_Iliac_Train_R',
     lambda data_dir='./datasets/TotalSeg_Iliac/train':
@@ -61,11 +71,9 @@ DatasetCatalog.register(
 )
 MetadataCatalog.get('TotalSeg_Iliac_Train_R').set(data_dir='./datasets/TotalSeg_Iliac/train')
 
-# 4. 如果您有 test 文件夹，也可以照此办理
-if os.path.exists('./datasets/TotalSeg_Iliac/test'):
-    DatasetCatalog.register(
-        'TotalSeg_Iliac_Test_L',
-        lambda data_dir='./datasets/TotalSeg_Iliac/test':
-        load_npz_cta_dataset(data_dir, filter_str='_L_')
-    )
-    MetadataCatalog.get('TotalSeg_Iliac_Test_L').set(data_dir='./datasets/TotalSeg_Iliac/test')
+DatasetCatalog.register(
+    'TotalSeg_Portal_Train',
+    lambda data_dir='./datasets/TotalSeg_Portal/train':
+    load_npz_cta_dataset(data_dir)
+)
+MetadataCatalog.get('TotalSeg_Portal_Train').set(data_dir='./datasets/TotalSeg_Portal/train')

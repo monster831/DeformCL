@@ -114,11 +114,10 @@ def build_cline_deform_transform_gen(cfg, is_train):
     tfm_gens = []
     crop_size = cfg.INPUT.CROP_SIZE_TRAIN
     if is_train:
-        tfm_gens.append(RandomCrop("absolute", crop_size))
+        # 1. 换成精准制导裁切，避免 NaN 报错
+        tfm_gens.append(InferCrop("absolute", crop_size))
         tfm_gens.append(RandomCrop("relative_range", (0.9, 0.9, 0.9)))
-        tfm_gens.append(RandomFlip_Z(prob=0.5))
-        # 现在 RandomFlip_X 已经在上面定义了，绝对不会报错
-        tfm_gens.append(RandomFlip_X(prob=0.5))
+        # 2. 删除了随机翻转，保护门静脉真实非对称拓扑结构
         tfm_gens.append(RandomSwapAxesXZ())
     return tfm_gens
 
@@ -144,7 +143,6 @@ class ClineDeformDatasetMapper:
         self.augmentations = AugmentationList(augmentations)
         mode = "training" if is_train else "inference"
         logger.info(f"[DatasetMapper] Augmentations used in {mode}: {augmentations}")
-        # 动态 ID 设置
         self.default_class_id = cfg.MODEL.PRED_CLASS
 
     def __call__(self, dataset_dict):
@@ -153,14 +151,13 @@ class ClineDeformDatasetMapper:
         npz_file = np.load(file_name, allow_pickle=True)
 
         # ------------------------------------------------
-        # 左右侧动态判断
+        # 【修改 1】彻底移除左右侧判断，统一设为类别 1 (主动脉)
         # ------------------------------------------------
-        is_left_vessel = "_L_" in file_name or "Carotid_L" in file_name or "Left" in file_name
-        target_class_id = 1 if is_left_vessel else 2
+        target_class_id = 1
 
         pad = np.array([50, 50, 50])
         
-        # 【关键修改 1】读取 cline 并转置维度 (X,Y,Z) -> (Z,Y,X)
+        # 读取 cline 并转置维度 (X,Y,Z) -> (Z,Y,X)
         cline = npz_file["cline"].transpose(2, 1, 0)
         
         src_shape = cline.shape
@@ -202,14 +199,11 @@ class ClineDeformDatasetMapper:
         # ------------------------------------------------
         # 读取数据与归一化
         # ------------------------------------------------
-        # 【关键修改 2】读取 image 并转置
+        # 读取 image 并转置
         image = npz_file["img"].astype(np.float32).transpose(2, 1, 0)
         image = image[start[0]:end[0], start[1]:end[1], start[2]:end[2]]
         
-        # 【关键修改 3】确认移除除法，防止双重归一化
-        # image = image / 1024.
-
-        # 【关键修改 4】读取 seg 并转置
+        # 读取 seg 并转置
         seg = npz_file["seg"].transpose(2, 1, 0)
         seg = seg[start[0]:end[0], start[1]:end[1], start[2]:end[2]]
 
@@ -218,10 +212,7 @@ class ClineDeformDatasetMapper:
         seg_binary[seg == target_class_id] = 1 
         seg = seg_binary 
 
-        # 空间归一化 (左变右)
-        if is_left_vessel:
-            image = np.flip(image, axis=2).copy()
-            seg = np.flip(seg, axis=2).copy()
+        # 【修改 2】彻底移除了 np.flip() 左右翻转逻辑，保持主动脉的真实空间位置
 
         aug_input = AugInput(image=image, sem_seg=seg)
         transforms = self.augmentations(aug_input)
@@ -234,8 +225,7 @@ class ClineDeformDatasetMapper:
         cline_binary[cline == target_class_id] = 1
         cline = cline_binary
 
-        if is_left_vessel:
-            cline = np.flip(cline, axis=2).copy()
+        # 【修改 3】同样彻底移除了中心线的 np.flip() 逻辑
 
         cline = transforms.apply_image(cline)
         dataset_dict["cline"] = torch.as_tensor(np.ascontiguousarray(cline[None, ...]))
@@ -254,7 +244,6 @@ class VesselSegDatasetMapper:
         self.is_train = is_train
         augmentations = transform_builder(cfg, is_train)
         self.augmentations = AugmentationList(augmentations)
-        # 1. 恢复：直接使用配置里的 PRED_CLASS (1=左, 2=右)
         self.default_class_id = cfg.MODEL.PRED_CLASS
 
     def __call__(self, dataset_dict):
@@ -264,19 +253,13 @@ class VesselSegDatasetMapper:
 
         image = npz_file["img"].astype(np.float32)
         
-        # 【关键修复 A】: 维度转置 (X,Y,Z) -> (Z,Y,X)
-        # 让深度(Depth)变成第一维，符合模型预期
+        # 维度转置 (X,Y,Z) -> (Z,Y,X)
         image = image.transpose(2, 1, 0)
-        #image = image / 1024.
         
         seg = npz_file["seg"]
-        # 【关键修复 A】: 标签也要同步转置
         seg = seg.transpose(2, 1, 0)
         
-        # =================================================
-        # 【修改 1】只提取当前指定的类别，不做动态判断
-        # 如果你运行命令行指定 PRED_CLASS 1，这里就只找 Label 1
-        # =================================================
+        # 只提取当前指定的类别
         target_class_id = self.default_class_id
         
         # 创建二值 Mask
@@ -284,14 +267,11 @@ class VesselSegDatasetMapper:
         seg_binary[seg == target_class_id] = 1
         seg = seg_binary
 
-        # 下采样 (保持不变)
+        # 下采样
         image = interpolate(image, type='img')
         seg = interpolate(seg, type='seg')
 
-        # =================================================
-        # 【修改 2】删除了翻转逻辑 (Flip)
-        # 现在不再把左侧翻转成右侧，保持原样
-        # =================================================
+        # 同样这里也没有翻转逻辑
 
         aug_input = AugInput(image=image, sem_seg=seg)
         transforms = self.augmentations(aug_input)
@@ -304,18 +284,5 @@ class VesselSegDatasetMapper:
         # 处理 Seg (Mask)
         seg = transforms.apply_image(seg)
         dataset_dict["seg"] = torch.as_tensor(np.ascontiguousarray(seg[None, ...]))
-
-        # =================================================
-        # ⚠️ 关键补充：生成 BBox 实例
-        # 训练检测模型必须要有 instances，否则会报错。
-        # =================================================
-        #if seg is not None:
-            # 获取图像尺寸 (D, H, W)
-            #image_shape = image.shape[-3:] 
-            # 生成检测需要的实例 (bbox, label)
-            # 这里的 target_class_id 会作为 label 传进去
-            #dataset_dict["instances"] = get_detection_dataset_dicts(
-                #seg, np.where(seg > 0), target_class_id, image_shape
-            #)
 
         return dataset_dict
